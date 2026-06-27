@@ -1618,10 +1618,13 @@ def test_imaginary():
     assert ask(Q.imaginary(x + y + z),
         Q.real(x) & Q.imaginary(y) & Q.imaginary(z)) is False
 
-    assert ask(Q.imaginary(I*x), Q.real(x)) is True
+    assert ask(Q.imaginary(I*x), Q.real(x)) is None  # x can be 0
+    assert ask(Q.imaginary(I*x), Q.real(x) & Q.nonzero(x)) is True
     assert ask(Q.imaginary(I*x), Q.imaginary(x)) is False
     assert ask(Q.imaginary(I*x), Q.complex(x)) is None
-    assert ask(Q.imaginary(x*y), Q.imaginary(x) & Q.real(y)) is True
+    assert ask(Q.imaginary(x*y), Q.imaginary(x) & Q.real(y)) is None  # y can be 0
+    assert ask(Q.imaginary(x*y),
+        Q.imaginary(x) & Q.real(y) & Q.nonzero(y)) is True
     assert ask(Q.imaginary(x*y), Q.real(x) & Q.real(y)) is False
 
     assert ask(Q.imaginary(I**x), Q.negative(x)) is None
@@ -1784,7 +1787,7 @@ def test_nonzero():
     # https://github.com/sympy/sympy/pull/29225
     assert ask(Q.nonzero(Pow(x, y), Q.nonzero(x))) is None
     assert ask(Q.nonzero(Pow(x, y)), Q.positive(x) & Q.real(y)) is True
-    assert ask(Q.nonzero(Pow(5, 2*I*n*pi)), Q.integer(n)) is False
+    assert ask(Q.nonzero(Pow(5, 2*I*n*pi)), Q.integer(n)) is None # n = 0
     assert ask(Q.nonzero(Pow(0, x)), Q.positive(x)) is False
     assert ask(Q.nonzero(Pow(5, I*n), Q.integer(n))) is None
     assert ask(Q.nonzero(Pow(-1, x)), Q.real(x)) is None
