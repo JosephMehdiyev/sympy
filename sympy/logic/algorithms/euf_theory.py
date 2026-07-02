@@ -71,24 +71,10 @@ class EUFCongruenceClosure:
         equations : list of Q.eq or SymPy expressions
             The ground equalities to be saturated.
         """
-        # pairs of constants yet to be merged
         self.pending_unions = deque()
-
-        # each constant has a representative (like a pointer)
-        # all the constant that have the same representative are
-        # in the same class
         self.representative_table = {}           # Representative[c]
-
-        # list of all the constants in the same class.
-        # Classes are list of terms currently known to be equal.
         self.classlist = defaultdict(set)        # ClassList[rep]
-
-        # for each input *(a,b), it stores consant c s.t
-        # c = *(a,b). It uses representatives of a and b.
         self.lookup_table = {}                   # Lookup_table[function, args]
-
-        # list of input equations *(b,c) = d
-        # where a is representative of b or/and c.
         self.use_list = defaultdict(list)        # UseList[rep]
 
         self._dummies = numbered_symbols('c', Dummy)
