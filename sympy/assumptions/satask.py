@@ -15,7 +15,8 @@ from sympy.assumptions.cnf import CNF, EncodedCNF
 from sympy.matrices.kind import MatrixKind
 
 
-def satask(proposition, assumptions=True, use_known_facts=True, iterations=oo):
+def satask(proposition, assumptions=True, use_known_facts=True, iterations=oo,
+        use_euf_theory=False):
     """
     Function to evaluate the proposition with assumptions using SAT algorithm.
 
@@ -69,16 +70,16 @@ def satask(proposition, assumptions=True, use_known_facts=True, iterations=oo):
         use_known_facts=use_known_facts, iterations=iterations)
     sat.add_from_cnf(assumptions)
 
-    return check_satisfiability(props, _props, sat)
+    return check_satisfiability(props, _props, sat, use_euf_theory)
 
 
-def check_satisfiability(prop, _prop, factbase):
+def check_satisfiability(prop, _prop, factbase, use_euf_theory=False):
     sat_true = factbase.copy()
     sat_false = factbase.copy()
     sat_true.add_from_cnf(prop)
     sat_false.add_from_cnf(_prop)
-    can_be_true = satisfiable(sat_true)
-    can_be_false = satisfiable(sat_false)
+    can_be_true = satisfiable(sat_true, use_euf_theory=use_euf_theory)
+    can_be_false = satisfiable(sat_false, use_euf_theory=use_euf_theory)
 
     if can_be_true and can_be_false:
         return None
