@@ -2,7 +2,8 @@
 Congruence Closure Engine for EUF
 
 Implements:
-    Nieuwenhuis & Oliveras, "Congruence Closure with Integer Offsets"
+    Ganzinger, Hagen, Nieuwenhuis, Oliveras and Tinelli,
+    "DPLL(T): Fast Decision Procedures", CAV 2004, Section 4.
     https://www.cs.upc.edu/~oliveras/dpllt.pdf
 
 This algorithm efficiently computes the equivalence closure of a set of
@@ -52,7 +53,8 @@ class EUFCongruenceClosure:
     Congruence closure algorithm for ground Equality with Uninterpreted Functions (EUF).
 
     See:
-        Nieuwenhuis & Oliveras, "Congruence Closure with Integer Offsets"
+        Ganzinger, Hagen, Nieuwenhuis, Oliveras and Tinelli,
+        "DPLL(T): Fast Decision Procedures", CAV 2004, Section 4.
         https://www.cs.upc.edu/~oliveras/dpllt.pdf
 
     Major data structures (using algorithm's variable names):
