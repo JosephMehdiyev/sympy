@@ -162,14 +162,8 @@ class EUFCongruenceClosure:
         Return the unique class representative for const (with path compression).
         """
         root = const
-        # Find root
-        while root != self.representative_table[root]:
+        if root != self.representative_table[root]:
             root = self.representative_table[root]
-        # Path compression
-        while const != root:
-            parent = self.representative_table[const]
-            self.representative_table[const] = root
-            const = parent
         return root
 
     def _union(self, a, b):
