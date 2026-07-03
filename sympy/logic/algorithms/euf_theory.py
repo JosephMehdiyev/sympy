@@ -5,12 +5,24 @@ Implements:
     Nieuwenhuis & Oliveras, "Congruence Closure with Integer Offsets"
     https://link.springer.com/chapter/10.1007/978-3-540-39813-4_5
 
+Open source version of the paper (with more context):
+    Nieuwenhuis & Oliveras, "Congruence Closure with Integer Offsets"
+    https://www.cs.upc.edu/~oliveras/IC.pdf
+
 This algorithm efficiently computes the equivalence closure of a set of
 ground equalities over uninterpreted functions, using union-find,
 curryfication/flattening, and congruence propagation.
 
 Terminology, variable names, and algorithm steps are consistent with those
 shown in the paper, especially Section 4.
+
+Short introduction to terms:
+    Constants: non-function terms. in e.g f(a,b) = d, d is a constant.
+    Classes: Congruence classes. All the terms in the same class have
+        relational and congruence properties. Shortly everything is
+        knwon to be equal.
+    Representative (repr): A constant term that represents the entire class.
+        terms that have the same representative are in the same class.
 
 Example usage (doctest):
 
@@ -20,9 +32,9 @@ Example usage (doctest):
 >>> f = Function('f')
 >>> a, b, x, y = symbols('a b x y')
 >>> cc = EUFCongruenceClosure([Q.eq(a, b), Q.eq(f(a), x), Q.eq(f(b), y)])
->>> cc.are_equal(x, y)
+>>> cc.are_congruent(x, y)
 True
->>> cc.are_equal(a, x)
+>>> cc.are_congruent(a, x)
 False
 
 Classes
@@ -106,8 +118,7 @@ class EUFCongruenceClosure:
     def _flatten(self, expr):
         """
         Curryfy, and flatten the expression.
-        The method will replace each non-constant subterm with
-        a constant until the depth is at most 1.
+        This method MUST be called before any merging. It is a required step.
 
         Returns
         -------
@@ -154,17 +165,18 @@ class EUFCongruenceClosure:
     def _const_of(self, term):
         """
         Return the constant that replaced the transformed term.
+        If the term was constant to begin with, return itself.
         """
         return self._term_to_const[term]
 
-    def _find(self, const):
+    def _find_repr(self, const):
         """
         Return the unique class representative for const.
         """
         return self.representative_table[const]
 
     def _union(self, a, b):
-        rep_a, rep_b = self._find(a), self._find(b)
+        rep_a, rep_b = self._find_repr(a), self._find_repr(b)
         if rep_a == rep_b:
             return
         # Ensure |ClassList(a)| <= |ClassList(b)|
@@ -177,11 +189,11 @@ class EUFCongruenceClosure:
         del self.classlist[rep_a]
         # For each application (func, args, term) in UseList(rep_a)
         for func, arg_ids, term in list(self.use_list.pop(rep_a, [])):
-            rep_args = tuple(self._find(arg) for arg in arg_ids)
-            rep_term = self._find(term)
+            rep_args = tuple(self._find_repr(arg) for arg in arg_ids)
+            rep_term = self._find_repr(term)
             key = (func, rep_args)
             if key in self.lookup_table:
-                other = self._find(self.lookup_table[key])
+                other = self._find_repr(self.lookup_table[key])
                 if other != rep_term:
                     self.pending_unions.append((rep_term, other))
             else:
@@ -209,7 +221,7 @@ class EUFCongruenceClosure:
         >>> a, b, x, y = symbols('a b x y')
         >>> cc = EUFCongruenceClosure([Q.eq(a, x), Q.eq(b, y)])
         >>> cc.merge(a, b)
-        >>> cc.are_equal(x, y)
+        >>> cc.are_congruent(x, y)
         True
         """
         self.pending_unions.append((self._const_of(lhs), self._const_of(rhs)))
@@ -228,11 +240,11 @@ class EUFCongruenceClosure:
         >>> f = Function('f')
         >>> x, y = symbols('x y')
         >>> cc = EUFCongruenceClosure([Q.eq(x, y), Q.eq(f(x), f(y))])
-        >>> cc.are_equal(x, y)
+        >>> cc.are_congruent(x, y)
         True
-        >>> cc.are_equal(f(x), f(y))
+        >>> cc.are_congruent(f(x), f(y))
         True
-        >>> cc.are_equal(x, f(x))
+        >>> cc.are_congruent(x, f(x))
         False
         """
         try:
@@ -240,4 +252,4 @@ class EUFCongruenceClosure:
             rhs_id = self._const_of(rhs)
         except KeyError:
             return False
-        return self._find(lhs_id) == self._find(rhs_id)
+        return self._find_repr(lhs_id) == self._find_repr(rhs_id)
