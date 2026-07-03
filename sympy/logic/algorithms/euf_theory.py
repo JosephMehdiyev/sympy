@@ -72,8 +72,6 @@ class EUFCongruenceClosure:
         classlist: defaultdict(set), rep -> set of all elements in class (CLASSLIST).
         lookup_table: dict, maps (function, tuple of args) to a constant (LOOKUP).
         use_list: defaultdict(list), rep -> list of (func, args, result) triples (USELIST).
-
-    Terms are transformed once and for all, before any merging (Sec. 4).
     """
 
     def __init__(self, equations):
@@ -90,9 +88,8 @@ class EUFCongruenceClosure:
         self.use_list = defaultdict(list)        # UseList[rep]
 
         self._dummies = numbered_symbols('c', Dummy)
-        # these are used only on the _flatten_and_curify
-        # and are the part of the preprocessing only
-        self._term_to_const = {}
+        # the terms that flattened to a constant
+        self._term_to_const = {}                 # _term_to_const[expr] -> const
         self._lambda_cache = {}
 
         # Transform every term of the input equations first, then merge.
@@ -165,7 +162,7 @@ class EUFCongruenceClosure:
     def _const_of(self, term):
         """
         Return the constant that replaced the transformed term.
-        If the term was constant to begin with, return itself.
+        If the term was constant to begin with, returns itself.
         """
         return self._term_to_const[term]
 
