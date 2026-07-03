@@ -78,18 +78,22 @@ class EUFCongruenceClosure:
         self.use_list = defaultdict(list)        # UseList[rep]
 
         self._dummies = numbered_symbols('c', Dummy)
+        # these are used only on the _flatten_and_curify
+        # and are the part of the preprocessing only
         self._term_to_const = {}
         self._lambda_cache = {}
 
         # Transform every term of the input equations first, then merge.
         for eq in equations:
-            left_id = self._transform_formula(eq.lhs)
-            right_id = self._transform_formula(eq.rhs)
+            left_id = self._flatten_currify(eq.lhs)
+            right_id = self._flatten_currify(eq.rhs)
             self.pending_unions.append((left_id, right_id))
         self._process_pending_unions()
 
     def _register(self, const):
-        """Ensure const is in class structures as its own singleton."""
+        """
+        Initialize the constant as its own representative in one element class.
+        """
         if const not in self.representative_table:
             self.representative_table[const] = const
             self.classlist[const].add(const)
@@ -99,17 +103,15 @@ class EUFCongruenceClosure:
         self._register(d)
         return d
 
-    def _transform_formula(self, expr):
+    def _flatten_currify(self, expr):
         """
-        Curryfy and flatten expr, assigning a constant to each unique
-        subterm as in Sec. 4. Must be called before any merging.
-
-        By flatten, we mean that this method will transform the formula into
-        terms of at most depth of 2.
+        Curryfy, and flatten the expression.
+        The method will replace each non-constant subterm with
+        a constant until the depth is at most 1.
 
         Returns
         -------
-        Symbol/Dummy : unique id for the term subtree.
+        Symbol/Dummy : the new and unique constant that replaced the term.
         """
         if expr in self._term_to_const:
             return self._term_to_const[expr]
@@ -120,26 +122,26 @@ class EUFCongruenceClosure:
         elif isinstance(expr, Number) or getattr(expr, "is_Atom", False):
             const = self._new_dummy()
         elif isinstance(expr, AppliedPredicate):
-            arg_ids = tuple(self._transform_formula(arg) for arg in expr.arguments)
-            const = self._transform_application(expr.function, arg_ids)
+            arg_ids = tuple(self._flatten_currify(arg) for arg in expr.arguments)
+            const = self._record_func_eq(expr.function, arg_ids)
         elif isinstance(expr, Lambda):
             lam = expr if len(expr.variables) == 1 else expr.curry()
-            body_id = self._transform_formula(lam.expr)
+            body_id = self._flatten_currify(lam.expr)
             lam_key = Lambda(lam.variables[0], body_id)
             if lam_key not in self._lambda_cache:
                 self._lambda_cache[lam_key] = self._new_dummy()
             const = self._lambda_cache[lam_key]
         else:
             func = expr.func
-            func_id = self._transform_formula(func) if isinstance(func, Basic) else func
-            arg_ids = tuple(self._transform_formula(arg) for arg in expr.args)
-            const = self._transform_application(func_id, arg_ids)
+            func_id = self._flatten_currify(func) if isinstance(func, Basic) else func
+            arg_ids = tuple(self._flatten_currify(arg) for arg in expr.args)
+            const = self._record_func_eq(func_id, arg_ids)
 
         self._term_to_const[expr] = const
         return const
 
-    def _transform_application(self, func, arg_ids):
-        """Record the flat definition func(arg_ids) = d and return d."""
+    def _record_func_eq(self, func, arg_ids):
+        """Record the equation func(arg_ids) = d and return d."""
         key = (func, arg_ids)
         if key in self.lookup_table:
             return self.lookup_table[key]
@@ -151,9 +153,7 @@ class EUFCongruenceClosure:
 
     def _const_of(self, term):
         """
-        Return the constant naming a transformed term.
-
-        Raise KeyError if the term was not part of the preprocessed input.
+        Return the constant that replaced the transformed term.
         """
         return self._term_to_const[term]
 
