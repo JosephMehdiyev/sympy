@@ -40,11 +40,11 @@ from sympy.utilities.iterables import numbered_symbols
 from sympy.assumptions.assume import AppliedPredicate
 
 
-
 class EUFUnhandledInput(Exception):
     """
     Raised while creating an EUFCongruenceClosure if unhandled input is present.
     """
+
 
 class EUFCongruenceClosure:
     """
