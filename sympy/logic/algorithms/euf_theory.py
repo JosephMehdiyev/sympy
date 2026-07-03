@@ -159,12 +159,9 @@ class EUFCongruenceClosure:
 
     def _find(self, const):
         """
-        Return the unique class representative for const (with path compression).
+        Return the unique class representative for const.
         """
-        root = const
-        if root != self.representative_table[root]:
-            root = self.representative_table[root]
-        return root
+        return self.representative_table[const]
 
     def _union(self, a, b):
         rep_a, rep_b = self._find(a), self._find(b)
