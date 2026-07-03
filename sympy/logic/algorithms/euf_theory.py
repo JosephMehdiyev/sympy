@@ -85,8 +85,8 @@ class EUFCongruenceClosure:
 
         # Transform every term of the input equations first, then merge.
         for eq in equations:
-            left_id = self._flatten_currify(eq.lhs)
-            right_id = self._flatten_currify(eq.rhs)
+            left_id = self._flatten(eq.lhs)
+            right_id = self._flatten(eq.rhs)
             self.pending_unions.append((left_id, right_id))
         self._process_pending_unions()
 
@@ -103,7 +103,7 @@ class EUFCongruenceClosure:
         self._register(d)
         return d
 
-    def _flatten_currify(self, expr):
+    def _flatten(self, expr):
         """
         Curryfy, and flatten the expression.
         The method will replace each non-constant subterm with
@@ -122,19 +122,19 @@ class EUFCongruenceClosure:
         elif isinstance(expr, Number) or getattr(expr, "is_Atom", False):
             const = self._new_dummy()
         elif isinstance(expr, AppliedPredicate):
-            arg_ids = tuple(self._flatten_currify(arg) for arg in expr.arguments)
+            arg_ids = tuple(self._flatten(arg) for arg in expr.arguments)
             const = self._record_func_eq(expr.function, arg_ids)
         elif isinstance(expr, Lambda):
             lam = expr if len(expr.variables) == 1 else expr.curry()
-            body_id = self._flatten_currify(lam.expr)
+            body_id = self._flatten(lam.expr)
             lam_key = Lambda(lam.variables[0], body_id)
             if lam_key not in self._lambda_cache:
                 self._lambda_cache[lam_key] = self._new_dummy()
             const = self._lambda_cache[lam_key]
         else:
             func = expr.func
-            func_id = self._flatten_currify(func) if isinstance(func, Basic) else func
-            arg_ids = tuple(self._flatten_currify(arg) for arg in expr.args)
+            func_id = self._flatten(func) if isinstance(func, Basic) else func
+            arg_ids = tuple(self._flatten(arg) for arg in expr.args)
             const = self._record_func_eq(func_id, arg_ids)
 
         self._term_to_const[expr] = const
@@ -223,7 +223,7 @@ class EUFCongruenceClosure:
         self.pending_unions.append((self._const_of(lhs), self._const_of(rhs)))
         self._process_pending_unions()
 
-    def are_equal(self, lhs, rhs):
+    def are_congruent(self, lhs, rhs):
         """
         Query whether two terms are in the same class under the closure.
         Terms that were never transformed always return False.
