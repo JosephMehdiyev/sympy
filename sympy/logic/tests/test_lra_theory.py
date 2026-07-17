@@ -565,23 +565,28 @@ def test_example_from_paper():
     # Assert -x - y <= 3 (s2)
     # s2 and s1 are conflicting assertions as for both to be true
     # x >= -2 but x's range is [-8, -4]
+    lra.push()
     res = lra.assert_lit(4)
     assert res is None
     is_sat, _ = lra.check()
     assert is_sat is False
 
-    # Backtrack to remove the conflicted assertion
-    lra.backtrack()
+    # Pop to remove the conflicted assertion
+    lra.pop()
     is_sat, _ = lra.check()
     assert is_sat is True
 
     # State A_3 after backtracking
+    # The assignment is not restored on pop, so instead of the
+    # snapshot values (s1=0, s2=8) check() repairs s1 by clamping
+    # it to its violated bound and keeps A*x = 0, giving another
+    # valid model of the same state.
     assert var_s1.upper == LRARational(1, 0)
     assert var_x.lower == LRARational(-8, 0)
     assert var_x.upper == LRARational(-4, 0)
     assert var_x.assign == LRARational(-4, 0)
-    assert var_s1.assign == LRARational(0, 0)
-    assert var_s2.assign == LRARational(8, 0)
+    assert var_s1.assign == LRARational(1, 0)
+    assert var_s2.assign == LRARational(7, 0)
 
 
 def test_backtracking_single_variable():
@@ -599,13 +604,14 @@ def test_backtracking_single_variable():
     assert is_sat is True
 
     # Asserts x >= -2
+    lra.push()
     res = lra.assert_lit(3)
     # This directly contradicts x <= -4 which `assert_lit` catches instantly
     assert res is not None
     is_sat, _ = res
     assert is_sat is False
 
-    lra.backtrack()
+    lra.pop()
     is_sat, _ = lra.check()
     assert is_sat is True
 
@@ -625,13 +631,14 @@ def test_backtracking_multiple_variables():
 
     # If 2x + 3y <= 12 and x >= 3, then y <= 2
     # We are asserting y >= 3 which is wrong
+    lra.push()
     res = lra.assert_lit(3)
     assert res is None
     is_sat, _ = lra.check()
     assert is_sat is False
 
-    # backtracking to remove the faulty assert
-    lra.backtrack()
+    # popping to remove the faulty assert
+    lra.pop()
     is_sat, _ = lra.check()
     assert is_sat is True
 
@@ -648,7 +655,9 @@ def test_backtracking_single_variable_multiple_backtracks():
     # Setting 5 <= x <= 10
     lra.assert_lit(1)
     lra.assert_lit(2)
+    lra.push()
     lra.assert_lit(3)
+    lra.push()
 
     # x <= 2 is impossible while x >= 5 is present
     res = lra.assert_lit(4)
@@ -656,15 +665,15 @@ def test_backtracking_single_variable_multiple_backtracks():
     is_sat, _ = res
     assert is_sat is False
 
-    # First backtrack: Undo x <= 2 to resolve the conflict
-    lra.backtrack()
+    # First pop: Undo the level of x <= 2 to resolve the conflict
+    lra.pop()
     is_sat, _ = lra.check()
     assert is_sat is True
 
-    # Second backtrack: Erase the x >= 5 constraint.
+    # Second pop: Erase the x >= 5 constraint.
     # This widens the valid domain back to [0, 10],
     # allowing to accept the previously conflicting x <= 2 rule.
-    lra.backtrack()
+    lra.pop()
 
     # Setting 0 <= x <= 2
     lra.assert_lit(4)
@@ -697,26 +706,27 @@ def test_backtracking_multiple_variables_multiple_backtracks():
     assert is_sat is True
 
     # Now x >= 5 and y >= 5, x + y >= 10
+    lra.push()
     lra.assert_lit(4)
     lra.assert_lit(5)
     is_sat, _ = lra.check()
     assert is_sat is True
 
     # x + y <= 4 is mathematically impossible when x>=5 and y>=5
+    lra.push()
     res = lra.assert_lit(6)
     assert res is None
     is_sat, _ = lra.check()
     assert is_sat is False
 
-    # First backtrack: Pop the conflicting rule (Rule 6)
-    lra.backtrack()
+    # First pop: undo the conflicting rule (Rule 6)
+    lra.pop()
     is_sat, _ = lra.check()
     assert is_sat is True
 
-    # Second and Third backtrack: pop the restrictive constraints
+    # Second pop: undo the restrictive constraints x >= 5 and y >= 5
     # This restores the domain to x >= 0, y >= 0
-    lra.backtrack()
-    lra.backtrack()
+    lra.pop()
 
     # x + y <= 4 is mathematically possible now
     lra.assert_lit(6)
@@ -728,4 +738,4 @@ def test_backtracking_empty_history():
     enc = EncodedCNF()
     lra, _ = LRASolver.from_encoded_cnf(enc, testing_mode=True)
 
-    raises(ValueError, lambda: lra.backtrack())
+    raises(ValueError, lambda: lra.pop())

@@ -186,7 +186,16 @@ class LRASolver():
         self.result = None  # always one of: (True, assignment), (False, conflict clause), None
 
         self.bound_history = []
+        self.checkpoints = []
         self.last_assign_snapshot = {var: var.assign for var in self.all_var}
+
+        self._to_propagate = []
+        self.var_to_atoms = {}
+        for atom_id, boundaries in atom_id_to_boundaries.items():
+            for b in boundaries:
+                c, upper = b.to_rational(False)
+                self.var_to_atoms.setdefault(b.var, []).append(
+                    (c, upper, atom_id, len(boundaries)))
 
     @staticmethod
     def from_encoded_cnf(encoded_cnf, testing_mode=False):
@@ -370,6 +379,9 @@ class LRASolver():
         anything was asserted.
         """
         self.result = None
+        self.bound_history = []
+        self.checkpoints = []
+        self._to_propagate = []
         for var in self.all_var:
             var.initialize()
 
@@ -464,9 +476,11 @@ class LRASolver():
             self.result = False, [-conflicting_lit, -literal]
             return self.result
 
-        self.bound_history.append((xi, target_bound, upper))
+        old_literal = xi.upper_literal if upper else xi.lower_literal
+        self.bound_history.append((xi, target_bound, old_literal, upper))
 
         xi.set_bound(boundary, literal)
+        self._to_propagate.append((xi, ci, upper))
 
         if xi in self.nonslack and xi.assign * s > c_norm:
             self._update(xi, ci)
@@ -509,6 +523,12 @@ class LRASolver():
 
         explanation : set of ints
         """
+        for v in self.nonslack:
+            if v.assign < v.lower:
+                self._update(v, v.lower)
+            elif v.upper < v.assign:
+                self._update(v, v.upper)
+
         if self.is_sat:
             self.last_assign_snapshot = {var: var.assign for var in self.all_var}
             return True, self.last_assign_snapshot
@@ -661,37 +681,37 @@ class LRASolver():
 
         return A
 
-    def backtrack(self):
-        """
-        Revert the most recent bound update to resolve a conflict.
+    def push(self):
+        self.checkpoints.append((len(self.bound_history), self.is_sat))
 
-        Pops the last state from the ``bound_history`` stack and restores the
-        variable's previous upper or lower bound. It also reverts all variable
-        assignments to their previous valid state using a dictionary,
-        thus clearing the current conflict and restoring satisfiability.
+    def propagate(self):
+        implied = []
+        while self._to_propagate:
+            xi, bound, upper = self._to_propagate.pop()
+            for c, up, atom_id, n_bounds in self.var_to_atoms.get(xi, []):
+                if up == upper:
+                    if n_bounds == 1 and (bound <= c if upper else c <= bound):
+                        implied.append(atom_id)
+                elif bound < c if upper else c < bound:
+                    implied.append(-atom_id)
+        return implied
 
-        Raises
-        ======
-
-        ValueError
-            If called when the ``bound_history`` stack is empty, indicating
-            the solver's internal state is out of sync.
-        """
-        if not self.bound_history:
-            raise ValueError("Cannot backtrack, bound_history stack is empty")
-
-        xi, old_bound, upper = self.bound_history.pop()
-
-        if upper:
-            xi.upper = old_bound
-        else:
-            xi.lower = old_bound
-
-        for var in self.all_var:
-            var.assign = self.last_assign_snapshot[var]
-
-        self.is_sat = True
-        self.result = None
+    def pop(self, n=1):
+        self._to_propagate = []
+        for _ in range(n):
+            if not self.checkpoints:
+                raise ValueError("Cannot pop, no checkpoint has been pushed")
+            mark, is_sat = self.checkpoints.pop()
+            while len(self.bound_history) > mark:
+                xi, old_bound, old_literal, upper = self.bound_history.pop()
+                if upper:
+                    xi.upper = old_bound
+                    xi.upper_literal = old_literal
+                else:
+                    xi.lower = old_bound
+                    xi.lower_literal = old_literal
+            self.is_sat = is_sat
+            self.result = None
 
 def _sep_const_coeff(expr):
     """

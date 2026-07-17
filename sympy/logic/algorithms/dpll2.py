@@ -226,12 +226,7 @@ class SATSolver:
 
                     # check if assignment satisfies lra theory
                     if self.lra:
-                        for enc_var in self.var_settings:
-                            res = self.lra.assert_lit(enc_var)
-                            if res is not None:
-                                break
                         res = self.lra.check()
-                        self.lra.reset_bounds()
                     else:
                         res = None
                     if res is None or res[0]:
@@ -259,11 +254,15 @@ class SATSolver:
                     flip_lit = -self._current_level.decision
                     self._undo()
                     self.levels.append(Level(flip_lit, flipped=True))
+                    if self.lra:
+                        self.lra.push()
                     flip_var = True
                     continue
 
                 # Start the new decision level
                 self.levels.append(Level(lit))
+                if self.lra:
+                    self.lra.push()
 
             # Assign the literal, updating the clauses it satisfies
             self._assign_literal(lit)
@@ -291,6 +290,8 @@ class SATSolver:
                 flip_lit = -self._current_level.decision
                 self._undo()
                 self.levels.append(Level(flip_lit, flipped=True))
+                if self.lra:
+                    self.lra.push()
                 flip_var = True
 
     ########################
@@ -395,6 +396,16 @@ class SATSolver:
         self.variable_set[abs(lit)] = True
         self.heur_lit_assigned(lit)
 
+        if self.lra and not self.is_unsatisfied:
+            res = self.lra.assert_lit(lit)
+            if res is not None:
+                self._simple_add_learned_clause(res[1])
+                self.is_unsatisfied = True
+            else:
+                for implied_lit in self.lra.propagate():
+                    if not self.variable_set[abs(implied_lit)]:
+                        self._unit_prop_queue.append(implied_lit)
+
         sentinel_list = list(self.sentinels[-lit])
 
         for cls in sentinel_list:
@@ -437,6 +448,9 @@ class SATSolver:
         """
         if len(self.levels) == 1:
             raise IndexError("Cannot pop base decision level 0.")
+
+        if self.lra:
+            self.lra.pop()
 
         # Undo the variable settings
         for lit in self._current_level.var_settings:
