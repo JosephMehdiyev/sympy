@@ -139,6 +139,7 @@ class SATSolver:
         self.original_num_clauses = len(self.clauses)
 
         self.lra = lra_theory
+        self._theory_conflict_clause = None
 
     def _initialize_variables(self, variables):
         """Set up the variable data structures needed."""
@@ -224,46 +225,21 @@ class SATSolver:
                 # Stopping condition for a satisfying theory
                 if 0 == lit:
 
-                    # check if assignment satisfies lra theory
-                    if self.lra:
-                        for enc_var in self.var_settings:
-                            res = self.lra.assert_lit(enc_var)
-                            if res is not None:
-                                break
-                        res = self.lra.check()
-                        self.lra.reset_bounds()
-                    else:
-                        res = None
+                    res = self.lra.check() if self.lra is not None else None
                     if res is None or res[0]:
                         yield {self.symbols[abs(lit) - 1]:
                                     lit > 0 for lit in self.var_settings}
+                        ok = self._flip_last_decision()
                     else:
-                        self._simple_add_learned_clause(res[1])
+                        ok = self._handle_theory_conflict(res[1])
 
-                        # Backtrack until reaching a level with one of the conflict causing literals.
-                        inconsistent_literals = [-lit for lit in res[1]]
-                        while True:
-                            if len(self.levels) == 1:
-                                # If theory-inconsistent literals were set right off the bat
-                                # at level 0, the formula is unsat.
-                                return
-
-                            if any(inconsistent_lit in self._current_level.var_settings for inconsistent_lit in inconsistent_literals):
-                                break
-                            self._undo()
-
-                    while self._current_level.flipped:
-                        self._undo()
-                    if len(self.levels) == 1:
+                    if not ok:
                         return
-                    flip_lit = -self._current_level.decision
-                    self._undo()
-                    self.levels.append(Level(flip_lit, flipped=True))
                     flip_var = True
                     continue
 
                 # Start the new decision level
-                self.levels.append(Level(lit))
+                self._new_level(lit)
 
             # Assign the literal, updating the clauses it satisfies
             self._assign_literal(lit)
@@ -275,6 +251,13 @@ class SATSolver:
             if self.is_unsatisfied:
 
                 self.is_unsatisfied = False
+
+                if self._theory_conflict_clause is not None:
+                    clause, self._theory_conflict_clause = self._theory_conflict_clause, None
+                    if not self._handle_theory_conflict(clause):
+                        return
+                    flip_var = True
+                    continue
 
                 # We unroll all of the decisions until we can flip a literal
                 while self._current_level.flipped:
@@ -290,7 +273,7 @@ class SATSolver:
                 # Try the opposite setting of the most recent decision
                 flip_lit = -self._current_level.decision
                 self._undo()
-                self.levels.append(Level(flip_lit, flipped=True))
+                self._new_level(flip_lit, flipped=True)
                 flip_var = True
 
     ########################
@@ -316,6 +299,9 @@ class SATSolver:
 
         """
         return self.levels[-1]
+
+    def _new_level(self, decision, flipped=False):
+        self.levels.append(Level(decision, flipped))
 
     def _clause_sat(self, cls):
         """Check if a clause is satisfied by the current variable setting.
@@ -390,6 +376,7 @@ class SATSolver:
         {-1}
 
         """
+        already_set = lit in self.var_settings
         self.var_settings.add(lit)
         self._current_level.var_settings.add(lit)
         self.variable_set[abs(lit)] = True
@@ -413,6 +400,13 @@ class SATSolver:
                 # Check if no sentinel update exists
                 if other_sentinel:
                     self._unit_prop_queue.append(other_sentinel)
+
+        if self.lra is not None and not already_set:
+            res = self.lra.assert_lit(lit)
+            if res is not None:
+                self.is_unsatisfied = True
+                self._theory_conflict_clause = res[1]
+                self._unit_prop_queue = []
 
     def _undo(self):
         """
@@ -443,9 +437,35 @@ class SATSolver:
             self.var_settings.remove(lit)
             self.heur_lit_unset(lit)
             self.variable_set[abs(lit)] = False
+            if self.lra is not None:
+                self.lra.backtrack()
 
         # Pop the level off the stack
         self.levels.pop()
+
+    def _theory_backjump(self, conflict_clause):
+        self._simple_add_learned_clause(conflict_clause)
+        inconsistent_literals = [-lit for lit in conflict_clause]
+        while len(self.levels) > 1:
+            if any(lit in self._current_level.var_settings for lit in inconsistent_literals):
+                return True
+            self._undo()
+        return False
+
+    def _flip_last_decision(self):
+        while self._current_level.flipped:
+            self._undo()
+            if 1 == len(self.levels):
+                return False
+        flip_lit = -self._current_level.decision
+        self._undo()
+        self._new_level(flip_lit, flipped=True)
+        return True
+
+    def _handle_theory_conflict(self, conflict_clause):
+        if not self._theory_backjump(conflict_clause):
+            return False
+        return self._flip_last_decision()
 
     #########################
     #      Propagation      #
@@ -486,6 +506,8 @@ class SATSolver:
 
     def _unit_prop(self):
         """Perform unit propagation on the current theory."""
+        if self.is_unsatisfied:
+            return False
         result = len(self._unit_prop_queue) > 0
         while self._unit_prop_queue:
             next_lit = self._unit_prop_queue.pop()
@@ -495,6 +517,9 @@ class SATSolver:
                 return False
             else:
                 self._assign_literal(next_lit)
+                if self.is_unsatisfied:
+                    self._unit_prop_queue = []
+                    return False
 
         return result
 

@@ -187,6 +187,7 @@ class LRASolver(TheorySolver):
         self.result = None  # always one of: (True, assignment), (False, conflict clause), None
 
         self.bound_history = []
+        self.notify_trail = []
         self.last_assign_snapshot = {var: var.assign for var in self.all_var}
 
     @classmethod
@@ -400,9 +401,11 @@ class LRASolver(TheorySolver):
             the literals asserted so far are unsatisfiable.
         """
         if abs(literal) not in self.atom_id_to_boundaries:
+            self.notify_trail.append((0, None))
             return None
 
         if not HANDLE_NEGATION and literal < 0:
+            self.notify_trail.append((0, None))
             return None
 
         boundaries = self.atom_id_to_boundaries[abs(literal)]
@@ -411,8 +414,11 @@ class LRASolver(TheorySolver):
         if len(boundaries) > 1 and is_literal_negated:
             # Negated equality is not handled and should only appear in
             # conflict clauses.
+            self.notify_trail.append((0, None))
             return None
 
+        snapshot = {var: var.assign for var in self.all_var}
+        pushed_before = len(self.bound_history)
         res = None
         for boundary in boundaries:
             res = self._assert_bound(boundary, literal)
@@ -423,6 +429,8 @@ class LRASolver(TheorySolver):
             self.is_sat = res is None
         else:
             self.is_sat = False
+
+        self.notify_trail.append((len(self.bound_history) - pushed_before, snapshot))
 
         return res
 
@@ -664,34 +672,35 @@ class LRASolver(TheorySolver):
 
     def backtrack(self):
         """
-        Revert the most recent bound update to resolve a conflict.
+        Undo the effects of the most recent ``assert_lit`` call.
 
-        Pops the last state from the ``bound_history`` stack and restores the
-        variable's previous upper or lower bound. It also reverts all variable
-        assignments to their previous valid state using a dictionary,
-        thus clearing the current conflict and restoring satisfiability.
+        This fully reverts whatever bounds that call set (zero, one, or two,
+        e.g. for an equality) and restores every variable's assignment to
+        what it was right before that call, undoing any pivoting done by
+        intervening ``check()`` calls as well.
 
         Raises
         ======
 
         ValueError
-            If called when the ``bound_history`` stack is empty, indicating
-            the solver's internal state is out of sync.
+            If called when no literal has been notified via ``assert_lit``.
         """
-        if not self.bound_history:
-            raise ValueError("Cannot backtrack, bound_history stack is empty")
+        if not self.notify_trail:
+            raise ValueError("Cannot backtrack, no literal has been notified")
 
-        xi, old_bound, upper = self.bound_history.pop()
+        pushed, snapshot = self.notify_trail.pop()
+        for _ in range(pushed):
+            xi, old_bound, upper = self.bound_history.pop()
+            if upper:
+                xi.upper = old_bound
+            else:
+                xi.lower = old_bound
 
-        if upper:
-            xi.upper = old_bound
-        else:
-            xi.lower = old_bound
+        if snapshot is not None:
+            for var, assign in snapshot.items():
+                var.assign = assign
 
-        for var in self.all_var:
-            var.assign = self.last_assign_snapshot[var]
-
-        self.is_sat = True
+        self.is_sat = False
         self.result = None
 
 def _sep_const_coeff(expr):
