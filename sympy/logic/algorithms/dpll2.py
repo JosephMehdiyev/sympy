@@ -276,6 +276,13 @@ class SATSolver:
                 self._new_level(flip_lit, flipped=True)
                 flip_var = True
 
+            elif self.lra is not None:
+                res = self.lra.check()
+                if not res[0]:
+                    if not self._handle_theory_conflict(res[1]):
+                        return
+                    flip_var = True
+
     ########################
     #    Helper Methods    #
     ########################
