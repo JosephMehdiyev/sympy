@@ -451,3 +451,31 @@ def test_issue_27733_second_fix():
     encoding = {Q.gt(x0, x1): 1, Q.lt(x1, x0): 2, Q.le(x1, x0): 3, Q.ge(x0, x1): 4}
     cnf = EncodedCNF(clauses, encoding)
     assert satisfiable(cnf, use_lra_theory=True) is False
+
+
+def test_duplicate_literal_assignment_notifies_theory_once():
+    # A literal can be queued for unit propagation more than once (e.g.
+    # via two different clauses that both propagate it in the same
+    # round), so _assign_literal can run twice for the same literal.
+    # dpll2 used to notify the theory (assert_lit) on every call, while
+    # backtracking only undoes one notification per *distinct* literal
+    # in var_settings (a set), leaving the theory's internal trail out
+    # of sync with the boolean trail it is supposed to mirror.
+    from sympy.logic.algorithms.dpll2 import SATSolver
+    from sympy.logic.algorithms.lra_theory import LRASolver
+
+    x = symbols('x')
+    encoding = {Q.gt(x, 0): 1}
+    cnf = EncodedCNF([{1}], encoding)
+    lra, conflicts = LRASolver.from_encoded_cnf(cnf, testing_mode=True)
+    solver = SATSolver(cnf.data + conflicts, cnf.variables, set(), cnf.symbols,
+                        lra_theory=lra)
+
+    solver._new_level(1)
+    solver._assign_literal(1)
+    solver._assign_literal(1)
+    assert len(lra.notify_trail) == 1
+
+    solver._undo()
+    assert len(lra.notify_trail) == 0
+    assert lra.bound_history == []
