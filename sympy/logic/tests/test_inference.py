@@ -469,7 +469,7 @@ def test_duplicate_literal_assignment_notifies_theory_once():
     cnf = EncodedCNF([{1}], encoding)
     lra, conflicts = LRASolver.from_encoded_cnf(cnf, testing_mode=True)
     solver = SATSolver(cnf.data + conflicts, cnf.variables, set(), cnf.symbols,
-                        lra_theory=lra)
+                        theory=lra)
 
     solver._new_level(1)
     solver._assign_literal(1)

@@ -17,6 +17,7 @@ from sympy.core.sorting import ordered
 from sympy.assumptions.cnf import EncodedCNF
 
 from sympy.logic.algorithms.lra_theory import LRASolver
+from sympy.logic.algorithms.theory_solver import TheorySolver
 
 
 def dpll_satisfiable(expr, all_models=False, use_lra_theory=False):
@@ -48,11 +49,11 @@ def dpll_satisfiable(expr, all_models=False, use_lra_theory=False):
         return False
 
     if use_lra_theory:
-        lra, immediate_conflicts = LRASolver.from_encoded_cnf(expr)
+        theory, immediate_conflicts = LRASolver.from_encoded_cnf(expr)
     else:
-        lra = None
+        theory = None
         immediate_conflicts = []
-    solver = SATSolver(expr.data + immediate_conflicts, expr.variables, set(), expr.symbols, lra_theory=lra)
+    solver = SATSolver(expr.data + immediate_conflicts, expr.variables, set(), expr.symbols, theory=theory)
     models = solver._find_model()
 
     if all_models:
@@ -89,7 +90,7 @@ class SATSolver:
 
     def __init__(self, clauses, variables, var_settings, symbols=None,
                 heuristic='vsids', clause_learning='none', INTERVAL=500,
-                 lra_theory = None):
+                 theory: TheorySolver | None = None):
 
         self.var_settings = var_settings
         self.heuristic = heuristic
@@ -138,7 +139,7 @@ class SATSolver:
         self.num_learned_clauses = 0
         self.original_num_clauses = len(self.clauses)
 
-        self.lra = lra_theory
+        self.theory: TheorySolver | None = theory
         self._theory_conflict_clause = None
 
     def _initialize_variables(self, variables):
@@ -225,7 +226,7 @@ class SATSolver:
                 # Stopping condition for a satisfying theory
                 if 0 == lit:
 
-                    res = self.lra.check() if self.lra is not None else None
+                    res = self.theory.check() if self.theory is not None else None
                     if res is None or res[0]:
                         yield {self.symbols[abs(lit) - 1]:
                                     lit > 0 for lit in self.var_settings}
@@ -276,8 +277,8 @@ class SATSolver:
                 self._new_level(flip_lit, flipped=True)
                 flip_var = True
 
-            elif self.lra is not None:
-                res = self.lra.check()
+            elif self.theory is not None:
+                res = self.theory.check()
                 if not res[0]:
                     if not self._handle_theory_conflict(res[1]):
                         return
@@ -408,8 +409,8 @@ class SATSolver:
                 if other_sentinel:
                     self._unit_prop_queue.append(other_sentinel)
 
-        if self.lra is not None and not already_set:
-            res = self.lra.assert_lit(lit)
+        if self.theory is not None and not already_set:
+            res = self.theory.assert_lit(lit)
             if res is not None:
                 self.is_unsatisfied = True
                 self._theory_conflict_clause = res[1]
@@ -444,8 +445,8 @@ class SATSolver:
             self.var_settings.remove(lit)
             self.heur_lit_unset(lit)
             self.variable_set[abs(lit)] = False
-            if self.lra is not None:
-                self.lra.backtrack()
+            if self.theory is not None:
+                self.theory.backtrack()
 
         # Pop the level off the stack
         self.levels.pop()
